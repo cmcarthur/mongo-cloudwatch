@@ -2,6 +2,13 @@
 
 A Clojure library designed to ... well, that part is up to you.
 
+## Todo
+
+- [ ] Add config loader
+- [ ] Add main function
+- [ ] Connect mongo stats to Cloudwatch sender
+- [ ] Write test suite
+
 ## Usage
 
 FIXME
