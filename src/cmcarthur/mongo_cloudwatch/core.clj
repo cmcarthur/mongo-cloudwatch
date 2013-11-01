@@ -1,8 +1,10 @@
 (ns cmcarthur.mongo-cloudwatch.core
+  (:gen-class)
   (:require [monger.core :as mongo]
             [chime]
             [clj-time.periodic :as periodic]
-            [clj-time.core :as time]))
+            [clj-time.core :as time]
+            [clojure.tools.cli :as cli]))
 
 ;; mongo
 
@@ -86,3 +88,20 @@
                         (do (println "Pushing...")
                             (push-metric "Service/Mongo"
                                          (create-cloudwatch-metrics-from-mongo-stats to-push))))))))
+
+(defn load-config
+  [path]
+  (with-open [^java.io.Reader reader (clojure.java.io/reader path)]
+    (let [props (java.util.Properties.)]
+      (.load props reader)
+      (into {} (for [[k v] props] [(keyword k) (read-string v)])))))
+
+(defn -main
+  [& args]
+  (let [[opts args banner]
+        (cli/cli args
+                 ["-c" "--config-file" "Specify an EDN config file to load"])]
+    (let [config (load-config (-> opts :config-file))]
+      (mongo/connect! (config :mongo))
+      (mongo/use-db! "admin")
+      (run-scheduler))))
