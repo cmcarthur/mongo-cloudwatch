@@ -103,7 +103,7 @@
         (cli/cli args
                  ["-c" "--config-file" "Specify an EDN config file to load"])]
     (let [config (load-config (-> opts :config-file))]
-      (mongo/connect! (config :mongo))
+      (mongo/connect-via-uri! (config :mongo-uri))
       (mongo/use-db! "admin")
       (run-scheduler)
       (info "Started Scheduler."))))
