@@ -4,7 +4,9 @@
             [chime]
             [clj-time.periodic :as periodic]
             [clj-time.core :as time]
-            [clojure.tools.cli :as cli]))
+            [clojure.tools.cli :as cli]
+            [clojure.edn :as edn]
+            [clojure.tools.logging :refer [info error]]))
 
 ;; mongo
 
@@ -28,11 +30,12 @@
   (let [mongo-stats (get-mongo-stats)
         new-values (:query-totals mongo-stats)
         old-values (deref last-value)]
-    (if (nil? old-values)
-        (do (reset! last-value new-values) nil)
+    (do
+      (reset! last-value new-values)
+      (when-not (nil? old-values)
         {:host (:host mongo-stats)
          :lock-queue-size (:lock-queue-size mongo-stats)
-         :query-totals (merge-with - new-values old-values)})))
+         :query-totals (merge-with - new-values old-values)}))))
 
 ;; cloudwatch
 
@@ -63,9 +66,11 @@
   "Given a namespace and a metric data collection, this function will push
   the metric data to Cloudwatch."
   [namespace metric-data]
-  (let [push-request (create-push-metric-request namespace metric-data)
-        client (com.amazonaws.services.cloudwatch.AmazonCloudWatchClient.)]
-    (.putMetricData client push-request)))
+  (do
+    (info "Pushing metric to namespace" namespace)
+    (let [push-request (create-push-metric-request namespace metric-data)
+          client (com.amazonaws.services.cloudwatch.AmazonCloudWatchClient.)]
+      (.putMetricData client push-request))))
 
 ;; link
 
@@ -81,20 +86,16 @@
 (defn run-scheduler
   []
   (chime/chime-at (rest (periodic/periodic-seq (time/now)
-                                               (time/secs 15)))
+                                               (time/secs 5)))
                   (fn [time]
                     (let [to-push (calculate-new-mongo-values)]
                       (when-not (nil? to-push)
-                        (do (println "Pushing...")
-                            (push-metric "Service/Mongo"
-                                         (create-cloudwatch-metrics-from-mongo-stats to-push))))))))
+                        (push-metric "Service/Mongo"
+                                     (create-cloudwatch-metrics-from-mongo-stats to-push)))))))
 
 (defn load-config
   [path]
-  (with-open [^java.io.Reader reader (clojure.java.io/reader path)]
-    (let [props (java.util.Properties.)]
-      (.load props reader)
-      (into {} (for [[k v] props] [(keyword k) (read-string v)])))))
+  (edn/read-string (slurp path)))
 
 (defn -main
   [& args]
@@ -104,4 +105,5 @@
     (let [config (load-config (-> opts :config-file))]
       (mongo/connect! (config :mongo))
       (mongo/use-db! "admin")
-      (run-scheduler))))
+      (run-scheduler)
+      (info "Started Scheduler."))))
